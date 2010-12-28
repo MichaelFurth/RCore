@@ -753,6 +753,8 @@ ChatCommand * ChatHandler::getCommandTable()
         { "jail",           SEC_GAMEMASTER,     false, &ChatHandler::HandleJailCommand,                "", NULL },
         { "unjail",         SEC_GAMEMASTER,     false, &ChatHandler::HandleUnjailCommand,              "", NULL },
         { "listjail",       SEC_GAMEMASTER,     false, &ChatHandler::HandleListjailCommand,            "", NULL },
+        // added by Lorenor
+        { "phase",          SEC_GAMEMASTER,     true,  &ChatHandler::HandlePhaseCommand,               "", NULL },
 
         //Playerbot mod
         { "bot",            SEC_PLAYER,         false, &ChatHandler::HandlePlayerbotCommand,           "", NULL },

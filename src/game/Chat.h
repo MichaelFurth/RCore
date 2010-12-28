@@ -575,6 +575,9 @@ class ChatHandler
         bool HandlePlayerbotCommand(char* args);
         bool HandleQuitCommand(char* args);
 
+        // added by Lorenor
+        bool HandlePhaseCommand(char* args);
+
         bool HandleAHBotOptionsCommand(char* args);
 
         //! Development Commands
