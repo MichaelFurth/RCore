@@ -519,11 +519,11 @@ void WorldSession::HandlePushQuestToParty(WorldPacket& recvPacket)
                 }
 
                 pPlayer->SetDivider(_player->GetGUID());
+
                 if (pPlayer->GetPlayerbotAI())
                     pPlayer->GetPlayerbotAI()->AcceptQuest( pQuest, _player );
                 else
-                    pPlayer->PlayerTalkClass->SendQuestGiverQuestDetails(pQuest, _player->GetGUID(), true);
-
+                    pPlayer->PlayerTalkClass->SendQuestGiverQuestDetails( pQuest, _player->GetObjectGuid(), true );
             }
         }
     }
@@ -659,7 +659,7 @@ void WorldSession::HandleQuestgiverStatusMultipleQuery(WorldPacket& /*recvPacket
     {
         uint8 dialogStatus = DIALOG_STATUS_NONE;
 
-        if (itr->IsAnyTypeCreature())
+        if (itr->IsCreatureOrPet())
         {
             // need also pet quests case support
             Creature *questgiver = GetPlayer()->GetMap()->GetAnyTypeCreature(*itr);
@@ -679,7 +679,7 @@ void WorldSession::HandleQuestgiverStatusMultipleQuery(WorldPacket& /*recvPacket
             data << uint8(dialogStatus);
             ++count;
         }
-        else if (itr->IsGameobject())
+        else if (itr->IsGameObject())
         {
             GameObject *questgiver = GetPlayer()->GetMap()->GetGameObject(*itr);
 

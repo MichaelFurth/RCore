@@ -21,7 +21,7 @@
 
 DROP TABLE IF EXISTS `character_db_version`;
 CREATE TABLE `character_db_version` (
-  `required_10664_01_characters_arena_team_stats` bit(1) default NULL
+  `required_10862_01_characters_mail` bit(1) default NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8 ROW_FORMAT=FIXED COMMENT='Last applied sql update to DB';
 
 --
@@ -1472,7 +1472,7 @@ CREATE TABLE `item_loot` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 ROW_FORMAT=DYNAMIC COMMENT='Item System';
 
 --
--- Dumping data for table `item_instance`
+-- Dumping data for table `item_loot`
 --
 
 LOCK TABLES `item_loot` WRITE;

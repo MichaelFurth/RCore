@@ -16,9 +16,45 @@ enum
 
 enum StoneDisplayId
 {
-    FIRESTONE_DISPLAYID  = 7409,
-    SPELLSTONE_DISPLAYID = 13291,
-    SOULSTONE_DISPLAYID  = 6009
+    FIRESTONE_DISPLAYID   = 7409,
+    SPELLSTONE_DISPLAYID  = 13291,
+    SOULSTONE_DISPLAYID   = 6009,
+    HEALTHSTONE_DISPLAYID = 8026
+};
+
+enum DemonEntry
+{
+    DEMON_IMP        = 416,
+    DEMON_VOIDWALKER = 1860,
+    DEMON_SUCCUBUS   = 1863,
+    DEMON_FELHUNTER  = 417,
+    DEMON_FELGUARD   = 17252
+};
+
+enum DemonSpellIconIds
+{
+    // Imp
+    BLOOD_PACT_ICON       = 541,
+    FIREBOLT_ICON         = 18,
+    FIRE_SHIELD_ICON      = 16,
+    // Felguard
+    ANGUISH_ICON          = 173,
+    CLEAVE_ICON           = 277,
+    INTERCEPT_ICON        = 516,
+    // Felhunter
+    DEVOUR_MAGIC_ICON     = 47,
+    FEL_INTELLIGENCE_ICON = 1940,
+    SHADOW_BITE_ICON      = 2027,
+    SPELL_LOCK_ICON       = 77,
+    // Succubus
+    LASH_OF_PAIN_ICON     = 596,
+    SEDUCTION_ICON        = 48,
+    SOOTHING_KISS_ICON    = 694,
+    // Voidwalker
+    CONSUME_SHADOWS_ICON  = 207,
+    SACRIFICE_ICON        = 693,
+    SUFFERING_ICON        = 9,
+    TORMENT_ICON          = 173
 };
 
 enum WarlockSpells
@@ -147,6 +183,7 @@ private:
     // DEMONOLOGY
     uint32 DEMON_SKIN,
            DEMON_ARMOR,
+           DEMONIC_EMPOWERMENT,
            SHADOW_WARD,
            FEL_ARMOR,
            SOULSHATTER,
@@ -154,7 +191,9 @@ private:
            SOUL_LINK_AURA,
            HEALTH_FUNNEL,
            DETECT_INVISIBILITY,
-           CREATE_FIRESTONE;
+           CREATE_FIRESTONE,
+           CREATE_SOULSTONE,
+           CREATE_HEALTHSTONE;
 
     // DEMON SUMMON
     uint32 SUMMON_IMP,
@@ -165,8 +204,22 @@ private:
 
     // DEMON SKILLS
     uint32 BLOOD_PACT,
+           FIREBOLT,
+           FIRE_SHIELD,
+           ANGUISH,
+           CLEAVE,
+           INTERCEPT,
+           DEVOUR_MAGIC,
+           FEL_INTELLIGENCE,
+           SHADOW_BITE,
+           SPELL_LOCK,
+           LASH_OF_PAIN,
+           SEDUCTION,
+           SOOTHING_KISS,
            CONSUME_SHADOWS,
-           FEL_INTELLIGENCE;
+           SACRIFICE,
+           SUFFERING,
+           TORMENT;
 
     // first aid
     uint32 RECENTLY_BANDAGED;
@@ -183,7 +236,14 @@ private:
            BERSERKING,
            WILL_OF_THE_FORSAKEN;
 
-    uint32 SpellSequence, LastSpellCurse, LastSpellAffliction, LastSpellDestruction;
+    uint32 SpellSequence,
+           LastSpellCurse,
+           LastSpellAffliction,
+           LastSpellDestruction;
+
+    uint32 m_lastDemon;      // Last demon entry used for spell initialization
+    uint32 m_demonOfChoice;  // Preferred demon entry
+    bool   m_isTempImp;      // True if imp summoned temporarily until soul shard acquired for demon of choice.
 };
 
 #endif

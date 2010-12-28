@@ -56,6 +56,8 @@ GameObject::GameObject() : WorldObject()
 
     m_DBTableGuid = 0;
     m_rotation = 0;
+
+    m_health = 0;
 }
 
 GameObject::~GameObject()
@@ -85,7 +87,7 @@ void GameObject::RemoveFromWorld()
             else
             {
                 sLog.outError("Delete %s with SpellId %u LinkedGO %u that lost references to owner %s GO list. Crash possible later.",
-                    GetObjectGuid().GetString().c_str(), m_spellId, GetGOInfo()->GetLinkedGameObjectEntry(), owner_guid.GetString().c_str());
+                    GetGuidStr().c_str(), m_spellId, GetGOInfo()->GetLinkedGameObjectEntry(), owner_guid.GetString().c_str());
             }
         }
 
@@ -148,6 +150,13 @@ bool GameObject::Create(uint32 guidlow, uint32 name_id, Map *map, uint32 phaseMa
     SetGoArtKit(0);                                         // unknown what this is
     SetGoAnimProgress(animprogress);
 
+    if (goinfo->type == GAMEOBJECT_TYPE_DESTRUCTIBLE_BUILDING)
+    {
+        m_health = GetMaxHealth();
+        // destructible GO's show their "HP" as their animprogress
+        SetGoAnimProgress(255);
+    }
+
     //Notify the map's instance data.
     //Only works if you create the object in it, not if it is moves to that map.
     //Normally non-players do not teleport to other maps.
@@ -207,7 +216,7 @@ void GameObject::Update(uint32 update_diff)
                             udata.BuildPacket(&packet);
                             ((Player*)caster)->GetSession()->SendPacket(&packet);
 
-                            SendGameObjectCustomAnim(GetGUID());
+                            SendGameObjectCustomAnim(GetGUID(), 0);
                         }
 
                         m_lootState = GO_READY;             // can be successfully open with some chance
@@ -750,7 +759,7 @@ void GameObject::Respawn()
     }
 }
 
-bool GameObject::ActivateToQuest(Player *pTarget)const
+bool GameObject::ActivateToQuest(Player *pTarget) const
 {
     // if GO is ReqCreatureOrGoN for quest
     if (pTarget->HasQuestForGO(GetEntry()))
@@ -842,7 +851,6 @@ void GameObject::SummonLinkedTrapIfAny()
          GetPhaseMask(), GetPositionX(), GetPositionY(), GetPositionZ(), GetOrientation(), 0.0f, 0.0f, 0.0f, 0.0f, GO_ANIMPROGRESS_DEFAULT, GO_STATE_READY))
     {
         delete linkedGO;
-        linkedGO = NULL;
         return;
     }
 
@@ -858,32 +866,41 @@ void GameObject::SummonLinkedTrapIfAny()
     GetMap()->Add(linkedGO);
 }
 
-void GameObject::TriggeringLinkedGameObject( uint32 trapEntry, Unit* target)
+void GameObject::TriggerLinkedGameObject(Unit* target)
 {
+    uint32 trapEntry = GetGOInfo()->GetLinkedGameObjectEntry();
+
+    if (!trapEntry)
+        return;
+
     GameObjectInfo const* trapInfo = sGOStorage.LookupEntry<GameObjectInfo>(trapEntry);
-    if(!trapInfo || trapInfo->type!=GAMEOBJECT_TYPE_TRAP)
+    if (!trapInfo || trapInfo->type != GAMEOBJECT_TYPE_TRAP)
         return;
 
     SpellEntry const* trapSpell = sSpellStore.LookupEntry(trapInfo->trap.spellId);
-    if(!trapSpell)                                          // checked at load already
-        return;
 
-    float range = GetSpellMaxRange(sSpellRangeStore.LookupEntry(trapSpell->rangeIndex));
+    // The range to search for linked trap is weird. We set 0.5 as default. Most (all?)
+    // traps are probably expected to be pretty much at the same location as the used GO,
+    // so it appears that using range from spell is obsolete.
+    float range = 0.5f;
+
+    if (trapSpell)                                          // checked at load already
+        range = GetSpellMaxRange(sSpellRangeStore.LookupEntry(trapSpell->rangeIndex));
 
     // search nearest linked GO
     GameObject* trapGO = NULL;
+
     {
-        // using original GO distance
-        MaNGOS::NearestGameObjectEntryInObjectRangeCheck go_check(*target,trapEntry,range);
-        MaNGOS::GameObjectLastSearcher<MaNGOS::NearestGameObjectEntryInObjectRangeCheck> checker(trapGO,go_check);
+        // search closest with base of used GO, using max range of trap spell as search radius (why? See above)
+        MaNGOS::NearestGameObjectEntryInObjectRangeCheck go_check(*this, trapEntry, range);
+        MaNGOS::GameObjectLastSearcher<MaNGOS::NearestGameObjectEntryInObjectRangeCheck> checker(trapGO, go_check);
 
         Cell::VisitGridObjects(this, checker, range);
     }
 
     // found correct GO
-    // FIXME: when GO casting will be implemented trap must cast spell to target
-    if(trapGO)
-        target->CastSpell(target, trapSpell, true, NULL, NULL, GetGUID());
+    if (trapGO)
+        trapGO->Use(target);
 }
 
 GameObject* GameObject::LookupFishingHoleAround(float range)
@@ -946,7 +963,7 @@ void GameObject::Use(Unit* user)
 
     switch(GetGoType())
     {
-        case GAMEOBJECT_TYPE_DOOR:                          //0
+        case GAMEOBJECT_TYPE_DOOR:                          // 0
         {
             //doors never really despawn, only reset to default state/flags
             UseDoorOrButton();
@@ -955,7 +972,7 @@ void GameObject::Use(Unit* user)
             GetMap()->ScriptsStart(sGameObjectScripts, GetDBTableGUIDLow(), spellCaster, this);
             return;
         }
-        case GAMEOBJECT_TYPE_BUTTON:                        //1
+        case GAMEOBJECT_TYPE_BUTTON:                        // 1
         {
             //buttons never really despawn, only reset to default state/flags
             UseDoorOrButton();
@@ -963,13 +980,10 @@ void GameObject::Use(Unit* user)
             // activate script
             GetMap()->ScriptsStart(sGameObjectScripts, GetDBTableGUIDLow(), spellCaster, this);
 
-            // triggering linked GO
-            if (uint32 trapEntry = GetGOInfo()->button.linkedTrapId)
-                TriggeringLinkedGameObject(trapEntry, user);
-
+            TriggerLinkedGameObject(user);
             return;
         }
-        case GAMEOBJECT_TYPE_QUESTGIVER:                    //2
+        case GAMEOBJECT_TYPE_QUESTGIVER:                    // 2
         {
             if (user->GetTypeId() != TYPEID_PLAYER)
                 return;
@@ -984,7 +998,7 @@ void GameObject::Use(Unit* user)
 
             return;
         }
-        case GAMEOBJECT_TYPE_CHEST:
+        case GAMEOBJECT_TYPE_CHEST:                         // 3
         {
             if (user->GetTypeId() != TYPEID_PLAYER)
                 return;
@@ -998,16 +1012,27 @@ void GameObject::Use(Unit* user)
                     GetMap()->ScriptsStart(sEventScripts, GetGOInfo()->chest.eventId, user, this);
             }
 
-            // triggering linked GO
-            if (uint32 trapEntry = GetGOInfo()->chest.linkedTrapId)
-                TriggeringLinkedGameObject(trapEntry, user);
-
+            TriggerLinkedGameObject(user);
             return;
         }
         case GAMEOBJECT_TYPE_GENERIC:                       // 5
         {
             // No known way to exclude some - only different approach is to select despawnable GOs by Entry
             SetLootState(GO_JUST_DEACTIVATED);
+            return;
+        }
+        case GAMEOBJECT_TYPE_TRAP:                          // 6
+        {
+            // Currently we do not expect trap code below to be Use()
+            // directly (except from spell effect). Code here will be called by TriggerLinkedGameObject.
+
+            // FIXME: when GO casting will be implemented trap must cast spell to target
+            if (uint32 spellId = GetGOInfo()->trap.spellId)
+                user->CastSpell(user, spellId, true, NULL, NULL, GetGUID());
+
+            // TODO: all traps can be activated, also those without spell.
+            // Some may have have animation and/or are expected to despawn.
+
             return;
         }
         case GAMEOBJECT_TYPE_CHAIR:                         //7 Sitting: Wooden bench, chairs
@@ -1070,11 +1095,9 @@ void GameObject::Use(Unit* user)
             player->SetStandState(UNIT_STAND_STATE_SIT_LOW_CHAIR+info->chair.height);
             return;
         }
-        case GAMEOBJECT_TYPE_SPELL_FOCUS:
+        case GAMEOBJECT_TYPE_SPELL_FOCUS:                   // 8
         {
-            // triggering linked GO
-            if (uint32 trapEntry = GetGOInfo()->spellFocus.linkedTrapId)
-                TriggeringLinkedGameObject(trapEntry, user);
+            TriggerLinkedGameObject(user);
 
             // some may be activated in addition? Conditions for this? (ex: entry 181616)
             break;
@@ -1122,8 +1145,7 @@ void GameObject::Use(Unit* user)
 
             }
 
-            if (uint32 trapEntry = info->goober.linkedTrapId)
-                TriggeringLinkedGameObject(trapEntry, user);
+            TriggerLinkedGameObject(user);
 
             SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_IN_USE);
             SetLootState(GO_ACTIVATED);
@@ -1132,7 +1154,7 @@ void GameObject::Use(Unit* user)
 
             // this appear to be ok, however others exist in addition to this that should have custom (ex: 190510, 188692, 187389)
             if (time_to_restore && info->goober.customAnim)
-                SendGameObjectCustomAnim(GetGUID());
+                SendGameObjectCustomAnim(GetGUID(), info->goober.customAnim);
             else
                 SetGoState(GO_STATE_ACTIVE);
 
@@ -1311,7 +1333,10 @@ void GameObject::Use(Unit* user)
             if (GetUniqueUseCount() < info->summoningRitual.reqParticipants)
                 return;
 
-            spellCaster = GetMap()->GetPlayer(m_firstUser);
+            // owner is first user for non-wild GO objects, if it offline value already set to current user
+            if (GetOwnerGuid().IsEmpty())
+                if (Player* firstUser = GetMap()->GetPlayer(m_firstUser))
+                    spellCaster = firstUser;
 
             spellId = info->summoningRitual.spellId;
 
@@ -1510,13 +1535,94 @@ void GameObject::Use(Unit* user)
         return;
     }
 
-    Spell *spell = new Spell(spellCaster, spellInfo, triggered,GetGUID());
+    Spell *spell = new Spell(spellCaster, spellInfo, triggered, GetObjectGuid());
 
     // spell target is user of GO
     SpellCastTargets targets;
     targets.setUnitTarget(user);
 
     spell->prepare(&targets);
+}
+
+bool GameObject::IsInRange(float x, float y, float z, float radius) const
+{
+    GameObjectDisplayInfoEntry const *info = sGameObjectDisplayInfoStore.LookupEntry(GetUInt32Value(GAMEOBJECT_DISPLAYID));
+    if (!info)
+        return IsWithinDist3d(x, y, z, radius);
+
+    float dx = x - GetPositionX();
+    float dy = y - GetPositionY();
+    float dz = z - GetPositionZ();
+    float dist = sqrt(dx*dx + dy*dy);
+
+    if (dist <= CONTACT_DISTANCE)   // prevent division by 0
+        return true;
+
+    float sinA = sin(GetOrientation());
+    float cosA = cos(GetOrientation());
+    float sinB = dx / dist;
+    float cosB = dy / dist;
+
+    dx = dist * (cosA * cosB + sinA * sinB);
+    dy = dist * (cosA * sinB - sinA * cosB);
+
+    return dx < info->maxX + radius && dx > info->minX - radius
+        && dy < info->maxY + radius && dy > info->minY - radius
+        && dz < info->maxZ + radius && dz > info->minZ - radius;
+}
+
+void GameObject::DamageTaken(Unit* pDoneBy, uint32 damage)
+{
+    if (GetGoType() != GAMEOBJECT_TYPE_DESTRUCTIBLE_BUILDING || !m_health)
+        return;
+
+    DEBUG_FILTER_LOG(LOG_FILTER_DAMAGE, "GO damage taken: %u to health %u", damage, m_health);
+
+    if (m_health > damage)
+        m_health -= damage;
+    else
+        m_health = 0;
+
+    if (HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_DAMAGED)) // from damaged to destroyed
+    {
+        if (!m_health)
+        {
+            RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_DAMAGED);
+            SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_DESTROYED);
+            SetUInt32Value(GAMEOBJECT_DISPLAYID, m_goInfo->destructibleBuilding.destroyedDisplayId);
+        }
+    }
+    else                                            // from intact to damaged
+    {
+        if (m_health <= m_goInfo->destructibleBuilding.damagedNumHits)
+        {
+            SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_DAMAGED);
+            SetUInt32Value(GAMEOBJECT_DISPLAYID, m_goInfo->destructibleBuilding.damagedDisplayId);
+            // if we have a "dead" display we can "kill" the building after its damaged
+            if (m_goInfo->destructibleBuilding.destroyedDisplayId)
+            {
+                m_health = m_goInfo->destructibleBuilding.damagedNumHits;
+                if (!m_health)
+                    m_health = 1;
+            }
+            // otherwise we just handle it as "destroyed"
+            else
+                m_health = 0;
+         }
+    }
+    SetGoAnimProgress(m_health * 255 / GetMaxHealth());
+}
+
+void GameObject::Rebuild(Unit* pWho)
+{
+    if (GetGoType() != GAMEOBJECT_TYPE_DESTRUCTIBLE_BUILDING)
+        return;
+
+    RemoveFlag(GAMEOBJECT_FLAGS, GO_FLAG_DAMAGED | GO_FLAG_DESTROYED);
+    SetUInt32Value(GAMEOBJECT_DISPLAYID, m_goInfo->displayId);
+    m_health = GetMaxHealth();
+
+    SetGoAnimProgress(255);
 }
 
 // overwrite WorldObject function for proper name localization
@@ -1657,7 +1763,7 @@ float GameObject::GetObjectBoundingRadius() const
     // 1. This is clearly hack way because GameObjectDisplayInfoEntry have 6 floats related to GO sizes, but better that use DEFAULT_WORLD_OBJECT_SIZE
     // 2. In some cases this must be only interactive size, not GO size, current way can affect creature target point auto-selection in strange ways for big underground/virtual GOs
     if (GameObjectDisplayInfoEntry const* dispEntry = sGameObjectDisplayInfoStore.LookupEntry(GetGOInfo()->displayId))
-        return fabs(dispEntry->unknown12) * GetObjectScale();
+        return fabs(dispEntry->minX) * GetObjectScale();
 
     return DEFAULT_WORLD_OBJECT_SIZE;
 }

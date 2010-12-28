@@ -205,7 +205,7 @@ void WorldSession::HandleMessagechatOpcode( WorldPacket & recv_data )
             recv_data >> to;
             recv_data >> msg;
 
-		    if(msg.empty())
+            if(msg.empty())
                 break;
 
             if (ChatHandler(this).ParseCommands(msg.c_str()))
@@ -236,9 +236,7 @@ void WorldSession::HandleMessagechatOpcode( WorldPacket & recv_data )
 
             if (!sWorld.getConfig(CONFIG_BOOL_ALLOW_TWO_SIDE_INTERACTION_CHAT) && tSecurity == SEC_PLAYER && pSecurity == SEC_PLAYER )
             {
-                uint32 sidea = GetPlayer()->GetTeam();
-                uint32 sideb = player->GetTeam();
-                if( sidea != sideb )
+                if (GetPlayer()->GetTeam() != player->GetTeam())
                 {
                     SendWrongFactionNotice();
                     return;

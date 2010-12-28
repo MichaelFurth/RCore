@@ -101,10 +101,6 @@ BindIP = "0.0.0.0"
 #        Default: 1 (unload grids)
 #                 0 (do not unload grids)
 #
-#    SocketSelectTime
-#        Socket select time (in milliseconds)
-#        Default: 10000 (10 secs)
-#
 #    GridCleanUpDelay
 #        Grid clean up delay (in milliseconds)
 #        Default: 300000 (5 min)
@@ -194,7 +190,6 @@ PlayerLimit = 100
 SaveRespawnTimeImmediately = 1
 MaxOverspeedPings = 2
 GridUnload = 1
-SocketSelectTime = 10000
 GridCleanUpDelay = 300000
 MapUpdateInterval = 100
 ChangeWeatherInterval = 600000
@@ -1843,7 +1838,7 @@ PvPAnnouncer.ColorKilled = |CFFFFFF01
 PvPAnnouncer.ColorArea = |CFFFE8A0E
 
 ###################################################################################################################
-#    Customs
+#    Darkrulerz' Customs
 #
 #    Custom.PetScale
 #        Change the base pet scale

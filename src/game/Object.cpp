@@ -1769,11 +1769,11 @@ void WorldObject::SendObjectDeSpawnAnim(uint64 guid)
     SendMessageToSet(&data, true);
 }
 
-void WorldObject::SendGameObjectCustomAnim(uint64 guid)
+void WorldObject::SendGameObjectCustomAnim(uint64 guid, uint32 animprogress)
 {
     WorldPacket data(SMSG_GAMEOBJECT_CUSTOM_ANIM, 8+4);
     data << uint64(guid);
-    data << uint32(0);                                      // not known what this is
+    data << uint32(animprogress);
     SendMessageToSet(&data, true);
 }
 
@@ -1801,7 +1801,7 @@ Creature* WorldObject::SummonCreature(uint32 id, float x, float y, float z, floa
 {
     TemporarySummon* pCreature = new TemporarySummon(GetObjectGuid());
 
-    uint32 team = 0;
+    Team team = TEAM_NONE;
     if (GetTypeId()==TYPEID_PLAYER)
         team = ((Player*)this)->GetTeam();
 

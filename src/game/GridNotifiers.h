@@ -699,6 +699,68 @@ namespace MaNGOS
             NearestGameObjectEntryInObjectRangeCheck(NearestGameObjectEntryInObjectRangeCheck const&);
     };
 
+    // Success at gameobject in range of xyz, range update for next check (this can be use with GameobjectLastSearcher to find nearest GO)
+    class NearestGameObjectEntryInPosRangeCheck
+    {
+        public:
+            NearestGameObjectEntryInPosRangeCheck(WorldObject const& obj, uint32 entry, float x, float y, float z, float range)
+                : i_obj(obj), i_x(x), i_y(y), i_z(z), i_entry(entry), i_range(range) {}
+
+            WorldObject const& GetFocusObject() const { return i_obj; }
+
+            bool operator()(GameObject* go)
+            {
+                if (go->GetEntry() == i_entry && go->IsWithinDist3d(i_x, i_y, i_z, i_range))
+                {
+                    // use found GO range as new range limit for next check
+                    i_range = go->GetDistance(i_x,i_y,i_z);
+                    return true;
+                }
+
+                return false;
+            }
+
+            float GetLastRange() const { return i_range; }
+
+        private:
+            WorldObject const& i_obj;
+            uint32 i_entry;
+            float i_x, i_y, i_z;
+            float i_range;
+
+            // prevent clone this object
+            NearestGameObjectEntryInPosRangeCheck(NearestGameObjectEntryInPosRangeCheck const&);
+    };
+
+    // Success at gameobject with entry in range of provided xyz
+    class GameObjectEntryInPosRangeCheck
+    {
+        public:
+            GameObjectEntryInPosRangeCheck(WorldObject const& obj, uint32 entry, float x, float y, float z, float range)
+                : i_obj(obj), i_x(x), i_y(y), i_z(z), i_entry(entry), i_range(range) {}
+
+            WorldObject const& GetFocusObject() const { return i_obj; }
+
+            bool operator()(GameObject* go)
+            {
+                if (go->GetEntry() == i_entry && go->IsWithinDist3d(i_x, i_y, i_z, i_range))
+                    return true;
+
+                return false;
+            }
+
+            float GetLastRange() const { return i_range; }
+
+        private:
+            WorldObject const& i_obj;
+            uint32 i_entry;
+            float i_x, i_y, i_z;
+            float i_range;
+
+            // prevent clone this object
+            GameObjectEntryInPosRangeCheck(GameObjectEntryInPosRangeCheck const&);
+    };
+
     class GameObjectWithDbGUIDCheck
     {
         public:
@@ -1098,6 +1160,27 @@ namespace MaNGOS
 
             // prevent clone this object
             NearestCreatureEntryWithLiveStateInObjectRangeCheck(NearestCreatureEntryWithLiveStateInObjectRangeCheck const&);
+    };
+
+    class GameObjectInRangeCheck
+    {
+        public:
+            GameObjectInRangeCheck(WorldObject const* _obj, float _x, float _y, float _z, float _range):
+              i_obj(_obj), x(_x), y(_y), z(_z), range(_range) {}
+
+            WorldObject const& GetFocusObject() const { return *i_obj; }
+
+            bool operator() (GameObject* go)
+            {
+                return go->IsInRange(x, y, z, range);
+            }
+
+        private:
+            WorldObject const* i_obj;
+            float x, y, z, range;
+
+            // prevent cloning this object
+            GameObjectInRangeCheck(GameObjectInRangeCheck const&);
     };
 
     class AnyPlayerInObjectRangeCheck

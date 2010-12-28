@@ -296,15 +296,13 @@ void PlayerbotRogueAI::DoNonCombatActions()
     if (pItem != NULL && ai->GetHealthPercent() < 30)
     {
         ai->TellMaster("I could use some food.");
-        ai->UseItem(*pItem);
-        ai->SetIgnoreUpdateTime(30);
+        ai->UseItem(pItem);
         return;
     }
     else if (pItem == NULL && fItem != NULL && !m_bot->HasAura(RECENTLY_BANDAGED, EFFECT_INDEX_0) && ai->GetHealthPercent() < 70)
     {
         ai->TellMaster("I could use first aid.");
-        ai->UseItem(*fItem);
-        ai->SetIgnoreUpdateTime(8);
+        ai->UseItem(fItem);
         return;
     }
 
@@ -321,7 +319,7 @@ void PlayerbotRogueAI::DoNonCombatActions()
             poison = ai->FindConsumable(DEADLY_POISON_DISPLAYID);
         if (poison)
         {
-            ai->UseItem(*poison, EQUIPMENT_SLOT_MAINHAND);
+            ai->UseItem(poison, EQUIPMENT_SLOT_MAINHAND);
             ai->SetIgnoreUpdateTime(5);
         }
     }
@@ -336,7 +334,7 @@ void PlayerbotRogueAI::DoNonCombatActions()
             poison = ai->FindConsumable(INSTANT_POISON_DISPLAYID);
         if (poison)
         {
-            ai->UseItem(*poison, EQUIPMENT_SLOT_OFFHAND);
+            ai->UseItem(poison, EQUIPMENT_SLOT_OFFHAND);
             ai->SetIgnoreUpdateTime(5);
         }
     }

@@ -69,7 +69,10 @@ void Pet::AddToWorld()
 {
     ///- Register the pet for guid lookup
     if (!((Creature*)this)->IsInWorld())
+    {
         GetMap()->GetObjectsStore().insert<Pet>(GetGUID(), (Pet*)this);
+        sObjectAccessor.AddObject(this);
+    }
 
     Unit::AddToWorld();
 }
@@ -78,7 +81,10 @@ void Pet::RemoveFromWorld()
 {
     ///- Remove the pet from the accessor
     if (((Creature*)this)->IsInWorld())
+    {
         GetMap()->GetObjectsStore().erase<Pet>(GetGUID(), (Pet*)NULL);
+        sObjectAccessor.RemoveObject(this);
+    }
 
     ///- Don't call the function for Creature, normal mobs + totems go in a different storage
     Unit::RemoveFromWorld();
@@ -194,13 +200,14 @@ bool Pet::LoadPetFromDB( Player* owner, uint32 petentry, uint32 petnumber, bool 
     {
         case SUMMON_PET:
             petlevel=owner->getLevel();
-//            SetByteFlag(UNIT_FIELD_BYTES_2, 2, UNIT_CAN_BE_ABANDONED);
-            SetUInt32Value(UNIT_FIELD_BYTES_0, 2048);
+            SetByteValue(UNIT_FIELD_BYTES_0, 1, CLASS_MAGE);
             SetUInt32Value(UNIT_FIELD_FLAGS, UNIT_FLAG_PVP_ATTACKABLE);
             break;
         case HUNTER_PET:
+            SetByteValue(UNIT_FIELD_BYTES_0, 1, CLASS_WARRIOR);
+            SetByteValue(UNIT_FIELD_BYTES_0, 2, GENDER_NONE);
+            SetByteValue(UNIT_FIELD_BYTES_0, 3, POWER_FOCUS);
             SetSheath(SHEATH_STATE_MELEE);
-            SetUInt32Value(UNIT_FIELD_BYTES_0, 0x02020100);
             SetByteFlag(UNIT_FIELD_BYTES_2, 2, (fields[9].GetUInt8() == 0) ? UNIT_CAN_BE_ABANDONED : UNIT_CAN_BE_RENAMED | UNIT_CAN_BE_ABANDONED);
             SetUInt32Value(UNIT_FIELD_FLAGS, UNIT_FLAG_PVP_ATTACKABLE);
                                                             // this enables popup window (pet abandon, cancel)
@@ -266,6 +273,7 @@ bool Pet::LoadPetFromDB( Player* owner, uint32 petentry, uint32 petnumber, bool 
         CastPetAuras(current);
 
     CastPetPassiveAuras(true);
+    CalculateScalingData(true);
     ApplyAllScalingBonuses(true);
 
     if (getPetType() != HUNTER_PET
@@ -712,39 +720,39 @@ void Pet::GivePetXP(uint32 xp)
         return;
 
     uint32 level = getLevel();
+    uint32 maxlevel = std::min(sWorld.getConfig(CONFIG_UINT32_MAX_PLAYER_LEVEL), GetOwner()->getLevel());
 
-    // XP to money conversion processed in Player::RewardQuest
-    if(level >= sWorld.getConfig(CONFIG_UINT32_MAX_PLAYER_LEVEL))
+    // pet not receive xp for level equal to owner level
+    if (level >= maxlevel)
         return;
 
-    uint32 curXP = GetUInt32Value(UNIT_FIELD_PETEXPERIENCE);
     uint32 nextLvlXP = GetUInt32Value(UNIT_FIELD_PETNEXTLEVELEXP);
+    uint32 curXP = GetUInt32Value(UNIT_FIELD_PETEXPERIENCE);
     uint32 newXP = curXP + xp;
 
-    if(newXP >= nextLvlXP && level+1 > GetOwner()->getLevel())
-    {
-        SetUInt32Value(UNIT_FIELD_PETEXPERIENCE, nextLvlXP-1);
-        return;
-    }
-
-    while( newXP >= nextLvlXP && level < sWorld.getConfig(CONFIG_UINT32_MAX_PLAYER_LEVEL) )
+    while( newXP >= nextLvlXP && level < maxlevel)
     {
         newXP -= nextLvlXP;
+        ++level;
 
-        GivePetLevel(level+1);
-        SetUInt32Value(UNIT_FIELD_PETNEXTLEVELEXP, sObjectMgr.GetXPForPetLevel(level+1));
+        GivePetLevel(level);                              // also update UNIT_FIELD_PETNEXTLEVELEXP and UNIT_FIELD_PETEXPERIENCE to level start
 
-        level = getLevel();
         nextLvlXP = GetUInt32Value(UNIT_FIELD_PETNEXTLEVELEXP);
     }
 
-    SetUInt32Value(UNIT_FIELD_PETEXPERIENCE, newXP);
+    SetUInt32Value(UNIT_FIELD_PETEXPERIENCE, level < maxlevel ? newXP : 0);
 }
 
 void Pet::GivePetLevel(uint32 level)
 {
-    if(!level)
+    if (!level || level == getLevel())
         return;
+
+    if (getPetType()==HUNTER_PET)
+    {
+        SetUInt32Value(UNIT_FIELD_PETEXPERIENCE, 0);
+        SetUInt32Value(UNIT_FIELD_PETNEXTLEVELEXP, sObjectMgr.GetXPForPetLevel(level));
+    }
 
     InitStatsForLevel(level);
     InitLevelupSpellsForLevel();
@@ -787,6 +795,11 @@ bool Pet::CreateBaseAtCreature(Creature* creature, Unit* owner)
     {
         setPetType(MINI_PET);
         return true;
+    }
+
+    if(cinfo->type == CREATURE_TYPE_BEAST)
+    {
+        SetUInt32Value(UNIT_MOD_CAST_SPEED, creature->GetUInt32Value(UNIT_MOD_CAST_SPEED));
     }
 
     SetDisplayId(creature->GetDisplayId());
@@ -1300,7 +1313,7 @@ void Pet::_SaveAuras()
 
             CharacterDatabase.PExecute("INSERT INTO pet_aura (guid, caster_guid, item_guid, spell, stackcount, remaincharges, basepoints0, basepoints1, basepoints2, maxduration0, maxduration1, maxduration2, remaintime0, remaintime1, remaintime2, effIndexMask) VALUES "
                 "('%u', '" UI64FMTD "', '%u', '%u', '%u', '%u', '%i', '%i', '%i', '%i', '%i', '%i', '%i', '%i', '%i', '%u')",
-                m_charmInfo->GetPetNumber(), holder->GetCasterGUID(), GUID_LOPART(holder->GetCastItemGUID()), holder->GetId(), holder->GetStackAmount(), holder->GetAuraCharges(),
+                m_charmInfo->GetPetNumber(), holder->GetCasterGuid().GetRawValue(), holder->GetCastItemGuid().GetCounter(), holder->GetId(), holder->GetStackAmount(), holder->GetAuraCharges(),
                 damage[EFFECT_INDEX_0], damage[EFFECT_INDEX_1], damage[EFFECT_INDEX_2],
                 maxduration[EFFECT_INDEX_0], maxduration[EFFECT_INDEX_1], maxduration[EFFECT_INDEX_2],
                 remaintime[EFFECT_INDEX_0], remaintime[EFFECT_INDEX_1], remaintime[EFFECT_INDEX_2],
@@ -1803,10 +1816,13 @@ uint8 Pet::GetMaxTalentPointsForLevel(uint32 level)
 
 void Pet::ToggleAutocast(uint32 spellid, bool apply)
 {
-    if(IsPassiveSpell(spellid))
+    if(IsPassiveSpell(spellid) || !isControlled())
         return;
 
     PetSpellMap::iterator itr = m_spells.find(spellid);
+
+    if (itr == m_spells.end())
+        return;
 
     uint32 i;
 
@@ -2018,12 +2034,10 @@ void Pet::SynchronizeLevelWithOwner()
             break;
         // can't be greater owner level
         case HUNTER_PET:
-            if(getLevel() > owner->getLevel())
-            {
+            if (getLevel() > owner->getLevel())
                 GivePetLevel(owner->getLevel());
-                SetUInt32Value(UNIT_FIELD_PETNEXTLEVELEXP, sObjectMgr.GetXPForPetLevel(owner->getLevel()));
-                SetUInt32Value(UNIT_FIELD_PETEXPERIENCE, GetUInt32Value(UNIT_FIELD_PETNEXTLEVELEXP)-1);
-            }
+            else if (getLevel() + 5 < owner->getLevel())
+                GivePetLevel(owner->getLevel() - 5);
             break;
         default:
             break;
@@ -3036,7 +3050,7 @@ PetScalingData* Pet::CalculateScalingData(bool recalculate)
     {
          const PetScalingData* pData = &*itr;
 
-         if (!pData->creatureID || (owner && (!pData->requiredAura || owner->HasSpell(pData->requiredAura) || owner->HasAura(pData->requiredAura))))
+         if (!pData->creatureID || (owner && (!pData->requiredAura || owner->HasSpell(pData->requiredAura) || owner->HasAura(pData->requiredAura) || HasSpell(pData->requiredAura) || HasAura(pData->requiredAura))))
          {
              m_PetScalingData->healthBasepoint  += pData->healthBasepoint;
              m_PetScalingData->healthScale      += pData->healthScale;
@@ -3079,7 +3093,7 @@ void Pet::Regenerate(Powers power, uint32 diff)
         case POWER_MANA:
         {
             float ManaIncreaseRate = sWorld.getConfig(CONFIG_FLOAT_RATE_POWER_MANA);
-            if (isInCombat())
+            if (IsUnderLastManaUseEffect())
             {
                 // Mangos Updates Mana in intervals of 2s, which is correct
                 addvalue = GetFloatValue(UNIT_FIELD_POWER_REGEN_INTERRUPTED_FLAT_MODIFIER) *  ManaIncreaseRate * 2.00f;

@@ -52,7 +52,13 @@ void VehicleKit::RemoveAllPassengers()
     for (SeatMap::iterator itr = m_Seats.begin(); itr != m_Seats.end(); ++itr)
     {
         if (Unit *passenger = itr->second.passenger)
+        {
             passenger->ExitVehicle();
+
+            // remove creatures of player mounts
+            if (passenger->GetTypeId() == TYPEID_UNIT)
+                passenger->AddObjectToRemoveList();
+        }
     }
 }
 
@@ -151,6 +157,11 @@ bool VehicleKit::AddPassenger(Unit *passenger, int8 seatId)
         passenger->SendMessageToSet(&data, true);
     }
 
+    if (seatInfo->m_flags & SEAT_FLAG_CAN_CAST)
+    {
+        passenger->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
+    }
+
     if (seatInfo->m_flags & SEAT_FLAG_CAN_CONTROL)
     {
         m_pBase->StopMoving();
@@ -194,7 +205,7 @@ bool VehicleKit::AddPassenger(Unit *passenger, int8 seatId)
     passenger->SendMonsterMoveTransport(m_pBase, SPLINETYPE_FACINGANGLE, SPLINEFLAG_UNKNOWN5, 0, 0.0f);
 
     if (m_pBase->GetTypeId() == TYPEID_UNIT)
-        RelocatePassengers(m_pBase->GetPositionX(), m_pBase->GetPositionY(), m_pBase->GetPositionZ(), m_pBase->GetOrientation());
+        RelocatePassengers(m_pBase->GetPositionX(), m_pBase->GetPositionY(), m_pBase->GetPositionZ()+0.5f, m_pBase->GetOrientation());
 
     UpdateFreeSeatCount();
     return true;
@@ -220,6 +231,11 @@ void VehicleKit::RemovePassenger(Unit *passenger)
 
     passenger->m_movementInfo.ClearTransportData();
     passenger->m_movementInfo.RemoveMovementFlag(MOVEFLAG_ONTRANSPORT);
+
+    if (seat->second.seatInfo->m_flags & SEAT_FLAG_CAN_CAST)
+    {
+        passenger->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
+    }
 
     if (seat->second.seatInfo->m_flags & SEAT_FLAG_CAN_CONTROL)
     {
@@ -248,7 +264,7 @@ void VehicleKit::RemovePassenger(Unit *passenger)
 
         WorldPacket data(SMSG_FORCE_MOVE_UNROOT, 8+4);
         data << passenger->GetPackGUID();
-        data << uint32(0);
+        data << uint32(2);
         passenger->SendMessageToSet(&data, true);
 
         ((Player*)passenger)->ResummonPetTemporaryUnSummonedIfAny();
@@ -260,7 +276,37 @@ void VehicleKit::RemovePassenger(Unit *passenger)
 
 void VehicleKit::Reset()
 {
+    InstallAllAccessories(m_pBase->GetEntry());
     UpdateFreeSeatCount();
+}
+
+void VehicleKit::InstallAllAccessories(uint32 entry)
+{
+    VehicleAccessoryList const* mVehicleList = sObjectMgr.GetVehicleAccessoryList(entry);
+    if (!mVehicleList)
+        return;
+
+    for (VehicleAccessoryList::const_iterator itr = mVehicleList->begin(); itr != mVehicleList->end(); ++itr)
+        InstallAccessory(itr->uiAccessory, itr->uiSeat, itr->bMinion);
+}
+
+void VehicleKit::InstallAccessory( uint32 entry, int8 seatId, bool minion)
+{
+    if (Unit *passenger = GetPassenger(seatId))
+    {
+        // already installed
+        if (passenger->GetEntry() == entry)
+            return;
+
+        passenger->ExitVehicle();
+    }
+
+    if (Creature *accessory = m_pBase->SummonCreature(entry, m_pBase->GetPositionX(), m_pBase->GetPositionY(), m_pBase->GetPositionZ(), 0.0f, TEMPSUMMON_CORPSE_TIMED_DESPAWN, 30000))
+    {
+        accessory->SetCreatorGuid(ObjectGuid());
+        accessory->EnterVehicle(this, seatId);
+        accessory->SendHeartBeat(false);
+    }
 }
 
 void VehicleKit::UpdateFreeSeatCount()

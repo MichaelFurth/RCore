@@ -655,6 +655,7 @@ bool IsPositiveEffect(uint32 spellId, SpellEffectIndex effIndex)
             {
                 case 28441:                                 // AB Effect 000
                     return false;
+                case 49634:                                 // Sergeant's Flare
                 case 54530:                                 // Opening
                     return true;
                 default:
@@ -744,8 +745,20 @@ bool IsPositiveEffect(uint32 spellId, SpellEffectIndex effIndex)
                     }
                     break;
                 case SPELL_AURA_PROC_TRIGGER_SPELL:
+                {
+                    switch(spellproto->Id) // Impact should be poisitive aura
+                    {
+                        case 11103:
+                        case 12357:
+                        case 12358:
+                        case 64343:
+                            return true;
+                        default:
+                            break;
+                    }
                     // many positive auras have negative triggered spells at damage for example and this not make it negative (it can be canceled for example)
                     break;
+                }
                 case SPELL_AURA_MOD_STUN:                   //have positive and negative spells, we can't sort its correctly at this moment.
                     if (effIndex == EFFECT_INDEX_0 && spellproto->Effect[EFFECT_INDEX_1] == 0 && spellproto->Effect[EFFECT_INDEX_2] == 0)
                         return false;                       // but all single stun aura spells is negative
@@ -945,7 +958,7 @@ SpellCastResult GetErrorAtShapeshiftedCast (SpellEntry const *spellInfo, uint32 
     bool actAsShifted = false;
     if (form > 0)
     {
-        SpellShapeshiftEntry const *shapeInfo = sSpellShapeshiftStore.LookupEntry(form);
+        SpellShapeshiftFormEntry const *shapeInfo = sSpellShapeshiftFormStore.LookupEntry(form);
         if (!shapeInfo)
         {
             sLog.outError("GetErrorAtShapeshiftedCast: unknown shapeshift %u", form);
@@ -3071,8 +3084,12 @@ void SpellMgr::LoadSpellScriptTarget()
                 spellProto->EffectImplicitTargetB[i] == TARGET_SCRIPT_COORDINATES ||
                 spellProto->EffectImplicitTargetA[i] == TARGET_FOCUS_OR_SCRIPTED_GAMEOBJECT ||
                 spellProto->EffectImplicitTargetB[i] == TARGET_FOCUS_OR_SCRIPTED_GAMEOBJECT ||
+                spellProto->EffectImplicitTargetA[i] == TARGET_AREAEFFECT_INSTANT ||
+                spellProto->EffectImplicitTargetB[i] == TARGET_AREAEFFECT_INSTANT ||
                 spellProto->EffectImplicitTargetA[i] == TARGET_AREAEFFECT_CUSTOM ||
-                spellProto->EffectImplicitTargetB[i] == TARGET_AREAEFFECT_CUSTOM)
+                spellProto->EffectImplicitTargetB[i] == TARGET_AREAEFFECT_CUSTOM ||
+                spellProto->EffectImplicitTargetA[i] == TARGET_AREAEFFECT_GO_AROUND_DEST ||
+                spellProto->EffectImplicitTargetB[i] == TARGET_AREAEFFECT_GO_AROUND_DEST)
             {
                 targetfound = true;
                 break;

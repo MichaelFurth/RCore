@@ -170,16 +170,16 @@ extern int main(int argc, char **argv)
     sLog.outTitle( "IXXX             xxxXX                                                  ");
     sLog.outTitle( "IXXX                xXX                                                 ");
     sLog.outTitle( "IXXX                xXX                                                 ");
-    sLog.outTitle( "IXXX                xXXZ   Xxx         xxX             Xxx          xxX ");
-    sLog.outTitle( "IXXX                xXXZ    XXXx      xXXX	  XxxxxX	XXXx      xXXX  ");
-    sLog.outTitle( "IXXX                xXXZZ    XXx  xx  xXX	 XXxxxxXX	 XXx  xx  xXX   ");
-    sLog.outTitle( "IXXX                xXXZZZ   XXx  xx  xXX	XX      XX   XXx  xx  xXX   ");
-    sLog.outTitle( "IXXX                xxXXXZ   XXx  xx  xXX	XX      XX   XXx  xx  xXX	");
-    sLog.outTitle( "XXXX                xXXXXZ   XXx  xx  xXX	XX      XX   XXx  xx  xXX   ");
+    sLog.outTitle( "IXXX                xXXZ   Xxx          xxX            Xxx          xxX  ");
+    sLog.outTitle( "IXXX                xXXZ    XXXx      xXXX    XxxxxX    XXXx      xXXX  ");
+    sLog.outTitle( "IXXX                xXXZZ    XXx  xx  xXX    XXxxxxXX    XXx  xx  xXX   ");
+    sLog.outTitle( "IXXX                xXXZZZ   XXx  xx  xXX   XX      XX   XXx  xx  xXX   ");
+    sLog.outTitle( "IXXX                xxXXXZ   XXx  xx  xXX   XX      XX   XXx  xx  xXX	");
+    sLog.outTitle( "XXXX                xXXXXZ   XXx  xx  xXX   XX      XX   XXx  xx  xXX   ");
     sLog.outTitle( "XXXXXXX             xXXXXZZ  XXxxxxxxxxXX    XXxxxxXX    XXxxxxxxxxXX   ");  
     sLog.outTitle( "XXXXXXX             xXXXXZZ  XXxXXXXXXxXX     xxxxxx     XXxXXXXXXxXX   ");
-	sLog.outString("Running on Revision %s.", cfg_file);
-	printf("%s\n", _FULLVERSION(REVISION_DATE,REVISION_TIME,REVISION_NR,REVISION_ID));
+
+    sLog.outString("Using configuration file %s.", cfg_file);
 
     DETAIL_LOG("%s (Library: %s)", OPENSSL_VERSION_TEXT, SSLeay_version(SSLEAY_VERSION));
     if (SSLeay() < 0x009080bfL )

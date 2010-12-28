@@ -4,6 +4,7 @@
 #include "Common.h"
 #include "../QuestDef.h"
 #include "../GameEventMgr.h"
+#include "../ObjectGuid.h"
 
 class WorldPacket;
 class WorldObject;
@@ -116,6 +117,7 @@ public:
         uint32 source;                // 1=bot, 2=master, 3=group
     };
     typedef std::map<uint64, AttackerInfo> AttackerInfoList;
+    typedef std::map<uint32, float> SpellRanges;
 
 public:
     PlayerbotAI(PlayerbotMgr * const mgr, Player * const bot);
@@ -151,6 +153,7 @@ public:
     uint32 getPetSpellId(const char* args) const;
     // Initialize spell using rank 1 spell id
     uint32 initSpell(uint32 spellId);
+    uint32 initPetSpell(uint32 spellIconId);
 
     // extracts item ids from links
     void extractItemIds(const std::string& text, std::list<uint32>& itemIds) const;
@@ -217,7 +220,12 @@ public:
     bool CastPetSpell(uint32 spellId, Unit* target = NULL);
     bool Buff(uint32 spellId, Unit* target, void (*beforeCast)(Player *) = NULL);
     bool SelfBuff(uint32 spellId);
-    void UseItem(Item& item, uint8 targetSlot = 255);
+
+    void UseItem(Item *item, uint32 targetFlag, ObjectGuid targetGUID);
+    void UseItem(Item *item, uint8 targetInventorySlot);
+    void UseItem(Item *item, Unit *target);
+    void UseItem(Item *item);
+
     void EquipItem(Item& item);
     //void Stay();
     //bool Follow(Player& player);
@@ -228,7 +236,7 @@ public:
     Unit *GetCurrentTarget() { return m_targetCombat; };
     void DoNextCombatManeuver();
     void DoCombatMovement();
-    void SetIgnoreUpdateTime(uint8 t) { m_ignoreAIUpdatesUntilTime = time(0) + t; };
+    void SetIgnoreUpdateTime(uint8 t = 0) { m_ignoreAIUpdatesUntilTime = time(0) + t; };
 
     Player *GetPlayerBot() const { return m_bot; }
     Player *GetPlayer() const { return m_bot; }
@@ -258,7 +266,6 @@ public:
     void SetMovementOrder(MovementOrderType mo, Unit *followTarget = 0);
     MovementOrderType GetMovementOrder() { return this->m_movementOrder; }
     void MovementReset();
-    void MovementUpdate();
     void MovementClear();
     bool IsMoving();
 
@@ -276,6 +283,9 @@ private:
     // and are only called from within HandleCommand.
     bool TradeItem(const Item& item, int8 slot = -1);
     bool TradeCopper(uint32 copper);
+
+    // Helper routines not needed by class AIs.
+    void UpdateAttackersForTarget(Unit *victim);
 
     // it is safe to keep these back reference pointers because m_bot
     // owns the "this" object and m_master owns m_bot. The owner always cleans up.
@@ -324,7 +334,9 @@ private:
 
     Unit *m_followTarget;       // whom to follow in non combat situation?
 
-    std::map<uint32, float> m_spellRangeMap;
+    SpellRanges m_spellRangeMap;
+
+    float m_destX, m_destY, m_destZ; // latest coordinates for chase and point movement types
 };
 
 #endif

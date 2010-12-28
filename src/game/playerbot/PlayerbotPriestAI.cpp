@@ -376,8 +376,7 @@ void PlayerbotPriestAI::DoNonCombatActions()
     if (pItem != NULL && ai->GetManaPercent() < 30)
     {
         ai->TellMaster("I could use a drink.");
-        ai->UseItem(*pItem);
-        ai->SetIgnoreUpdateTime(30);
+        ai->UseItem(pItem);
         return;
     }
 
@@ -390,15 +389,13 @@ void PlayerbotPriestAI::DoNonCombatActions()
     if (pItem != NULL && ai->GetHealthPercent() < 30)
     {
         ai->TellMaster("I could use some food.");
-        ai->UseItem(*pItem);
-        ai->SetIgnoreUpdateTime(30);
+        ai->UseItem(pItem);
         return;
     }
     else if (pItem == NULL && fItem != NULL && !m_bot->HasAura(RECENTLY_BANDAGED, EFFECT_INDEX_0) && ai->GetHealthPercent() < 70)
     {
         ai->TellMaster("I could use first aid.");
-        ai->UseItem(*fItem);
-        ai->SetIgnoreUpdateTime(8);
+        ai->UseItem(fItem);
         return;
     }
 

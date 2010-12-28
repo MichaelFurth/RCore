@@ -724,7 +724,7 @@ struct CreatureDisplayInfoEntry
     uint32      Displayid;                                  // 0        m_ID
                                                             // 1        m_modelID
                                                             // 2        m_soundID
-                                                            // 3        m_extendedDisplayInfoID
+    uint32      ExtendedDisplayInfoID;                      // 3        m_extendedDisplayInfoID -> CreatureDisplayInfoExtraEntry::DisplayExtraId
     float       scale;                                      // 4        m_creatureModelScale
                                                             // 5        m_creatureModelAlpha
                                                             // 6-8      m_textureVariation[3]
@@ -735,6 +735,17 @@ struct CreatureDisplayInfoEntry
                                                             // 13       m_particleColorID
                                                             // 14       m_creatureGeosetData
                                                             // 15       m_objectEffectPackageID
+};
+
+struct CreatureDisplayInfoExtraEntry
+{
+    uint32      DisplayExtraId;                             // 0        CreatureDisplayInfoEntry::m_extendedDisplayInfoID
+    uint32      Race;                                       // 1
+    //uint32      Gender;                                   // 2        Model gender, exist not small amount cases when query creature data return different gender from used model, so can't be replacement for model gender field.
+                                                            // 3-7      unknown, 0..~2x
+    //uint32      Equipment[11]                             // 8-18     equipped static items EQUIPMENT_SLOT_HEAD..EQUIPMENT_SLOT_HANDS, client show its by self
+                                                            // 19       unknown, 0/1
+    //char*                                                 // 20       CreatureDisplayExtra-*.blp
 };
 
 struct CreatureFamilyEntry
@@ -905,8 +916,12 @@ struct GameObjectDisplayInfoEntry
     uint32      Displayid;                                  // 0        m_ID
     // char* filename;                                      // 1
     // uint32 unknown2[10];                                 // 2-11     unknown data
-    float  unknown12;                                       // 12-17    unknown size data, use first value as interact dist, mostly in hacks way
-    // float  unknown13[5];                                 // 12-17    unknown size data
+    float       minX;
+    float       minY;
+    float       minZ;
+    float       maxX;
+    float       maxY;
+    float       maxZ;
     // uint32 unknown18;                                    // 18       unknown data
 };
 
@@ -1181,7 +1196,7 @@ struct MapEntry
             MapID==209 || MapID==269 || MapID==309 ||       // TanarisInstance, CavernsOfTime, Zul'gurub
             MapID==509 || MapID==534 || MapID==560 ||       // AhnQiraj, HyjalPast, HillsbradPast
             MapID==568 || MapID==580 || MapID==595 ||       // ZulAman, Sunwell Plateau, Culling of Stratholme
-            MapID==603 || MapID==615 || MapID==616;         // Ulduar, Obsidian Sanctum, Eye Of Eternity
+            MapID==603 || MapID==615 || MapID==616;         // Ulduar, The Obsidian Sanctum, The Eye Of Eternity
     }
 
     bool IsContinent() const
@@ -1207,6 +1222,15 @@ struct MovieEntry
     uint32      Id;                                         // 0 index
     //char*       filename;                                 // 1
     //uint32      unk2;                                     // 2 always 100
+};
+
+#define MAX_OVERRIDE_SPELLS     10
+
+struct OverrideSpellDataEntry
+{
+    uint32      Id;                                         // 0 index
+    uint32      Spells[MAX_OVERRIDE_SPELLS];                // 1-10 spells
+    //uint32      unk2;                                     // 11 possibly flag
 };
 
 struct PvPDifficultyEntry
@@ -1530,6 +1554,16 @@ struct SpellEntry
         return EffectSpellClassMaskA + effect * 3;
     }
 
+    bool IsFitToFamilyMask(uint64 familyFlags, uint32 familyFlags2 = 0) const
+    {
+        return (SpellFamilyFlags & familyFlags) || (SpellFamilyFlags2 & familyFlags2);
+    }
+
+    bool IsFitToFamily(SpellFamily family, uint64 familyFlags, uint32 familyFlags2 = 0) const
+    {
+        return SpellFamily(SpellFamilyName) == family && IsFitToFamilyMask(familyFlags, familyFlags2);
+    }
+
     private:
         // prevent creating custom entries (copy data from original in fact)
         SpellEntry(SpellEntry const&);                      // DON'T must have implementation
@@ -1581,7 +1615,7 @@ struct SpellRuneCostEntry
     bool NoRunicPowerGain() const { return runePowerGain == 0; }
 };
 
-struct SpellShapeshiftEntry
+struct SpellShapeshiftFormEntry
 {
     uint32 ID;                                              // 0
     //uint32 buttonPosition;                                // 1 unused

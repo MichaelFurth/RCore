@@ -18,13 +18,14 @@
 #include "../Player.h"
 #include "../ObjectMgr.h"
 #include "../Chat.h"
-#include "../WorldPacket.h"
+#include "WorldPacket.h"
 #include "../Spell.h"
 #include "../Unit.h"
 #include "../SpellAuras.h"
 #include "../SharedDefines.h"
 #include "Log.h"
 #include "../GossipDef.h"
+#include "../MotionMaster.h"
 
 // returns a float in range of..
 float rand_float(float low, float high)
@@ -291,6 +292,35 @@ uint32 PlayerbotAI::initSpell(uint32 spellId)
         delete spell;
     }
     return (next == 0) ? spellId : next;
+}
+
+
+// Pet spells do not form chains like player spells.
+// One of the options to initialize a spell is to use spell icon id
+uint32 PlayerbotAI::initPetSpell(uint32 spellIconId)
+{
+    Pet * pet = m_bot->GetPet();
+
+    if (!pet)
+        return 0;
+
+    for (PetSpellMap::iterator itr = pet->m_spells.begin(); itr != pet->m_spells.end(); ++itr)
+    {
+        const uint32 spellId = itr->first;
+
+        if (itr->second.state == PETSPELL_REMOVED || IsPassiveSpell(spellId))
+            continue;
+
+        const SpellEntry* const pSpellInfo = sSpellStore.LookupEntry(spellId);
+        if (!pSpellInfo)
+            continue;
+
+        if (pSpellInfo->SpellIconID == spellIconId)
+            return spellId;
+    }
+
+    // Nothing found
+    return 0;
 }
 
 /*
@@ -1275,7 +1305,7 @@ void PlayerbotAI::Feast()
         Item* pItem = FindDrink();
         if (pItem != NULL)
         {
-            UseItem(*pItem);
+            UseItem(pItem);
             m_TimeDoneDrinking = currentTime + 30;
             return;
         }
@@ -1289,7 +1319,7 @@ void PlayerbotAI::Feast()
         if (pItem != NULL)
         {
             //TellMaster("eating now...");
-            UseItem(*pItem);
+            UseItem(pItem);
             m_TimeDoneEating = currentTime + 30;
             return;
         }
@@ -1395,8 +1425,6 @@ void PlayerbotAI::GetCombatTarget(Unit* forcedTarget)
     // add thingToAttack to loot list
     m_lootCreature.push_back(m_targetCombat->GetGUID());
 
-    // set movement generators for combat movement
-    MovementClear();
     return;
 }
 
@@ -1759,8 +1787,12 @@ void PlayerbotAI::TurnInQuests(WorldObject *questgiver)
 
 bool PlayerbotAI::IsInCombat()
 {
+    Pet *pet;
     bool inCombat = false;
     inCombat |= m_bot->isInCombat();
+    pet = m_bot->GetPet();
+    if (pet)
+        inCombat |= pet->isInCombat();
     inCombat |= GetMaster()->isInCombat();
     if (m_bot->GetGroup())
     {
@@ -1768,10 +1800,29 @@ bool PlayerbotAI::IsInCombat()
         while (ref)
         {
             inCombat |= ref->getSource()->isInCombat();
+            pet = ref->getSource()->GetPet();
+            if (pet)
+                inCombat |= pet->isInCombat();
             ref = ref->next();
         }
     }
     return inCombat;
+}
+
+void PlayerbotAI::UpdateAttackersForTarget(Unit *victim)
+{
+    HostileReference *ref = victim->getHostileRefManager().getFirst();
+    while (ref)
+    {
+        ThreatManager *target = ref->getSource();
+        uint64 guid = target->getOwner()->GetGUID();
+        m_attackerInfo[guid].attacker = target->getOwner();
+        m_attackerInfo[guid].victim = target->getOwner()->getVictim();
+        m_attackerInfo[guid].threat = target->getThreat(victim);
+        m_attackerInfo[guid].count = 1;
+        //m_attackerInfo[guid].source = 1; // source is not used so far.
+        ref = ref->next();
+    }
 }
 
 void PlayerbotAI::UpdateAttackerInfo()
@@ -1780,36 +1831,16 @@ void PlayerbotAI::UpdateAttackerInfo()
     m_attackerInfo.clear();
 
     // check own attackers
-    HostileReference *ref = m_bot->getHostileRefManager().getFirst();
-    while (ref)
-    {
-        ThreatManager *target = ref->getSource();
-        uint64 guid = target->getOwner()->GetGUID();
-        m_attackerInfo[guid].attacker = target->getOwner();
-        m_attackerInfo[guid].victim = target->getOwner()->getVictim();
-        m_attackerInfo[guid].threat = target->getThreat(m_bot);
-        m_attackerInfo[guid].count = 1;
-        m_attackerInfo[guid].source = 1;
-        ref = ref->next();
-    }
+    UpdateAttackersForTarget(m_bot);
+    Pet *pet = m_bot->GetPet();
+    if (pet)
+        UpdateAttackersForTarget(pet);
 
     // check master's attackers
-    ref = GetMaster()->getHostileRefManager().getFirst();
-    while (ref)
-    {
-        ThreatManager *target = ref->getSource();
-        uint64 guid = target->getOwner()->GetGUID();
-        if (m_attackerInfo.find(guid) == m_attackerInfo.end())
-        {
-            m_attackerInfo[guid].attacker = target->getOwner();
-            m_attackerInfo[guid].victim = target->getOwner()->getVictim();
-            m_attackerInfo[guid].count = 0;
-            m_attackerInfo[guid].source = 2;
-        }
-        m_attackerInfo[guid].threat = target->getThreat(m_bot);
-        m_attackerInfo[guid].count++;
-        ref = ref->next();
-    }
+    UpdateAttackersForTarget(GetMaster());
+    pet = GetMaster()->GetPet();
+    if (pet)
+        UpdateAttackersForTarget(pet);
 
     // check all group members now
     if (m_bot->GetGroup())
@@ -1822,22 +1853,12 @@ void PlayerbotAI::UpdateAttackerInfo()
                 gref = gref->next();
                 continue;
             }
-            ref = gref->getSource()->getHostileRefManager().getFirst();
-            while (ref)
-            {
-                ThreatManager *target = ref->getSource();
-                uint64 guid = target->getOwner()->GetGUID();
-                if (m_attackerInfo.find(guid) == m_attackerInfo.end())
-                {
-                    m_attackerInfo[guid].attacker = target->getOwner();
-                    m_attackerInfo[guid].victim = target->getOwner()->getVictim();
-                    m_attackerInfo[guid].count = 0;
-                    m_attackerInfo[guid].source = 3;
-                }
-                m_attackerInfo[guid].threat = target->getThreat(m_bot);
-                m_attackerInfo[guid].count++;
-                ref = ref->next();
-            }
+
+            UpdateAttackersForTarget(gref->getSource());
+            pet = gref->getSource()->GetPet();
+            if (pet)
+                UpdateAttackersForTarget(pet);
+
             gref = gref->next();
         }
     }
@@ -2054,15 +2075,6 @@ void PlayerbotAI::MovementReset()
     }
 }
 
-void PlayerbotAI::MovementUpdate()
-{
-    // send heartbeats to world
-    // m_bot->SendHeartBeat(false);
-
-    // call set position (updates states, exploration, etc.)
-    m_bot->SetPosition(m_bot->GetPositionX(), m_bot->GetPositionY(), m_bot->GetPositionZ(), m_bot->GetOrientation(), false);
-}
-
 void PlayerbotAI::MovementClear()
 {
     // stop...
@@ -2082,6 +2094,9 @@ bool PlayerbotAI::IsMoving()
 
 void PlayerbotAI::SetInFront(const Unit* obj)
 {
+    if (IsMoving())
+        return;
+
     m_bot->SetInFront(obj);
 
     // TODO: Schmoozerd wrote a patch which adds MovementInfo::ChangeOrientation()
@@ -2112,15 +2127,27 @@ void PlayerbotAI::UpdateAI(const uint32 p_time)
     if (m_bot->IsBeingTeleported() || m_bot->GetTrader())
         return;
 
+    // Send updates to world if chasing target or moving to point
+    MovementGeneratorType movementType = m_bot->GetMotionMaster()->GetCurrentMovementGeneratorType();
+    if (movementType == CHASE_MOTION_TYPE || movementType == POINT_MOTION_TYPE)
+    {
+        float x, y, z;
+        m_bot->GetMotionMaster()->GetDestination(x, y, z);
+        if (x != m_destX || y != m_destY || z != m_destZ)
+        {
+            m_bot->SendMonsterMoveWithSpeed(x, y, z);
+            m_destX = x;
+            m_destY = y;
+            m_destZ = z;
+        }
+    }
+
     time_t currentTime = time(0);
     if (currentTime < m_ignoreAIUpdatesUntilTime)
         return;
 
     // default updates occur every two seconds
     m_ignoreAIUpdatesUntilTime = time(0) + 2;
-
-    // send heartbeat
-    MovementUpdate();
 
     if (!m_bot->isAlive())
     {
@@ -2198,7 +2225,7 @@ void PlayerbotAI::UpdateAI(const uint32 p_time)
         else if (m_spellIdCommand != 0)
         {
             Unit* pTarget = ObjectAccessor::GetUnit(*m_bot, m_targetGuidCommand);
-            if (pTarget != NULL)
+            if (pTarget)
                 CastSpell(m_spellIdCommand, *pTarget);
             m_spellIdCommand = 0;
             m_targetGuidCommand = 0;
@@ -2206,19 +2233,23 @@ void PlayerbotAI::UpdateAI(const uint32 p_time)
 
         // handle combat (either self/master/group in combat, or combat state and valid target)
         else if (IsInCombat() || (m_botState == BOTSTATE_COMBAT && m_targetCombat))
-            DoNextCombatManeuver();
-
+        {
+            if (!pSpell || !pSpell->IsChannelActive())
+                DoNextCombatManeuver();
+            else
+                SetIgnoreUpdateTime(1); // It's better to update AI more frequently during combat
+        }
         // bot was in combat recently - loot now
         else if (m_botState == BOTSTATE_COMBAT)
         {
             SetState(BOTSTATE_LOOTING);
             m_attackerInfo.clear();
-            m_ignoreAIUpdatesUntilTime = time(0);
+            SetIgnoreUpdateTime();
         }
         else if (m_botState == BOTSTATE_LOOTING)
         {
             DoLoot();
-            m_ignoreAIUpdatesUntilTime = time(0);
+            SetIgnoreUpdateTime();
         }
 /*
         // are we sitting, if so feast if possible
@@ -2315,7 +2346,7 @@ bool PlayerbotAI::CastSpell(uint32 spellId)
         pTarget = m_bot;
 
     // Check spell range
-    std::map<uint32, float>::iterator it = m_spellRangeMap.find(spellId);
+    SpellRanges::iterator it = m_spellRangeMap.find(spellId);
     if (it != m_spellRangeMap.end() && (int)it->second != 0)
     {
         float dist = m_bot->GetCombatDistance(pTarget);
@@ -2415,10 +2446,7 @@ bool PlayerbotAI::CastPetSpell(uint32 spellId, Unit* target)
             return false;
 
         if (!pet->isInFrontInMap(pTarget, 10)) // distance probably should be calculated
-        {
             pet->SetInFront(pTarget);
-            MovementUpdate();
-        }
     }
 
     pet->CastSpell(pTarget, pSpellInfo, false);
@@ -2439,6 +2467,9 @@ bool PlayerbotAI::Buff(uint32 spellId, Unit* target, void (*beforeCast)(Player *
     SpellEntry const * spellProto = sSpellStore.LookupEntry(spellId);
 
     if (!spellProto)
+        return false;
+
+    if (!target)
         return false;
 
     // Select appropriate spell rank for target's level
@@ -2871,52 +2902,90 @@ void PlayerbotAI::findItemsInInv(std::list<uint32>& itemIdSearchList, std::list<
     }
 }
 
-// submits packet to use an item
-void PlayerbotAI::UseItem(Item& item, uint8 targetSlot)
+// use item on self
+void PlayerbotAI::UseItem(Item *item)
 {
-    uint8 bagIndex = item.GetBagSlot();
-    uint8 slot = item.GetSlot();
+    UseItem(item, TARGET_FLAG_SELF, ObjectGuid());
+}
+
+// use item on equipped item
+void PlayerbotAI::UseItem(Item *item, uint8 targetInventorySlot)
+{
+    if (targetInventorySlot >= EQUIPMENT_SLOT_END)
+        return;
+
+    Item* const targetItem = m_bot->GetItemByPos(INVENTORY_SLOT_BAG_0, targetInventorySlot);
+    if (!targetItem)
+        return;
+
+    UseItem(item, TARGET_FLAG_ITEM, targetItem->GetObjectGuid());
+}
+
+// use item on unit
+void PlayerbotAI::UseItem(Item *item, Unit *target)
+{
+    if (!target)
+        return;
+
+    UseItem(item, TARGET_FLAG_UNIT, target->GetObjectGuid());
+}
+
+// generic item use method
+void PlayerbotAI::UseItem(Item *item, uint32 targetFlag, ObjectGuid targetGUID)
+{
+    if (!item)
+        return;
+
+    uint8 bagIndex = item->GetBagSlot();
+    uint8 slot = item->GetSlot();
     uint8 cast_count = 1;
-    uint32 spellid;
-    uint64 item_guid = item.GetGUID();
-    uint32 glyphIndex = 0; // ??
-    uint8 unk_flags = 0;  // not 0x02
-    uint32 targetFlag;
+    ObjectGuid item_guid = item->GetObjectGuid();
+    uint32 glyphIndex = 0;
+    uint8 unk_flags = 0;
 
-    WorldPacket* packet;
-
-    // create target data
-    // note other targets are possible but not supported at the moment
-    // see SpellCastTargets::read in Spell.cpp to see other options
-    // for setting target
-
-    if (targetSlot < EQUIPMENT_SLOT_END)
+    uint32 spellId = 0;
+    for (uint8 i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
     {
-        targetFlag = TARGET_FLAG_ITEM;
-        Item* const targetItem = m_bot->GetItemByPos(INVENTORY_SLOT_BAG_0, targetSlot);
-        PackedGuid targetGUID = targetItem->GetObjectGuid().WriteAsPacked();
-        spellid = item.GetProto()->Spells[0].SpellId;
-        packet = new WorldPacket(CMSG_USE_ITEM, 1 + 1 + 1 + 4 + 8 + 4 + 1 + 8);
-        *packet << bagIndex << slot << cast_count << spellid << item_guid
-                << glyphIndex << unk_flags << targetFlag << targetGUID;
+        if (item->GetProto()->Spells[i].SpellId > 0)
+        {
+            spellId = item->GetProto()->Spells[i].SpellId;
+            break;
+        }
+    }
+
+    WorldPacket *packet = new WorldPacket(CMSG_USE_ITEM, 28);
+    *packet << bagIndex << slot << cast_count << spellId << item_guid
+           << glyphIndex << unk_flags << targetFlag;
+
+    if (targetFlag & (TARGET_FLAG_UNIT | TARGET_FLAG_ITEM))
+        *packet << targetGUID.WriteAsPacked();
+
+    m_bot->GetSession()->QueuePacket(packet);
+
+    SpellEntry const * spellInfo = sSpellStore.LookupEntry(spellId);
+    if (!spellInfo)
+    {
+        TellMaster("Can't find spell entry for spell %u on item %u", spellId, item->GetEntry());
+        return;
+    }
+
+    SpellCastTimesEntry const * castingTimeEntry = sSpellCastTimesStore.LookupEntry(spellInfo->CastingTimeIndex);
+    if (!castingTimeEntry)
+    {
+        TellMaster("Can't find casting time entry for spell %u with index %u", spellId, spellInfo->CastingTimeIndex);
+        return;
+    }
+
+    uint8 duration, castTime;
+    castTime = (uint8)((float)castingTimeEntry->CastTime / 1000.0f);
+
+    if (item->GetProto()->Class == ITEM_CLASS_CONSUMABLE && item->GetProto()->SubClass == ITEM_SUBCLASS_FOOD)
+    {
+        duration = (uint8)((float)GetSpellDuration(spellInfo) / 1000.0f);
+        SetIgnoreUpdateTime(castTime + duration);
     }
     else
-    {
-        targetFlag = TARGET_FLAG_SELF;
-        spellid = 0;
-        packet = new WorldPacket(CMSG_USE_ITEM, 1 + 1 + 1 + 4 + 8 + 4 + 1);
-        *packet << bagIndex << slot << cast_count << spellid << item_guid
-                << glyphIndex << unk_flags << targetFlag;
-    }
-
-    m_bot->GetSession()->QueuePacket(packet); // queue the packet to get around race condition
-
-    // certain items cause player to sit (food,drink)
-    // tell bot to stop following if this is the case
-    // (doesn't work since we queued the packet!)
-    // maybe its not needed???
-    //if (! m_bot->IsStandState())
-    //    m_bot->GetMotionMaster()->Clear();
+        SetIgnoreUpdateTime(castTime);
 }
 
 // submits packet to use an item
@@ -3230,7 +3299,7 @@ void PlayerbotAI::HandleCommand(const std::string& text, Player& fromPlayer)
         extractItemIds(text, itemIds);
         findItemsInInv(itemIds, itemList);
         for (std::list<Item*>::iterator it = itemList.begin(); it != itemList.end(); ++it)
-            UseItem(**it);
+            UseItem(*it);
     }
 
     // equip items
